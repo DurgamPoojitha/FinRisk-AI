@@ -1,0 +1,27 @@
+# Python environment
+.venv/
+env/
+venv/
+ENV/
+bin/
+lib/
+include/
+
+# Caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Local databases and configs
+.env
+*.db
+*.sqlite3
+
+# OS metadata
+.DS_Store
+Thumbs.db

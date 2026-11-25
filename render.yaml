@@ -1,0 +1,48 @@
+services:
+  # ─── FastAPI Backend Web Service ─────────────────────────────────────────────
+  - type: web
+    name: finrisk-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.2
+      - key: PYTHONPATH
+        value: .
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finrisk-postgres
+          property: connectionString
+      - key: LLM_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DEFAULT_RISK_FREE_RATE
+        value: "0.04"
+
+  # ─── Streamlit Frontend Web Service ──────────────────────────────────────────
+  - type: web
+    name: finrisk-frontend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.2
+      - key: PYTHONPATH
+        value: .
+      - key: BACKEND_API_URL
+        fromService:
+          type: web
+          name: finrisk-backend
+          envVarKey: RENDER_EXTERNAL_URL
+
+databases:
+  # ─── Managed PostgreSQL Database ─────────────────────────────────────────────
+  - name: finrisk-postgres
+    plan: free
+    databaseName: finrisk
+    user: finrisk_user

@@ -1,0 +1,175 @@
+version: '3.9'
+
+# FinRisk AI — Full Production Stack
+# Services: PostgreSQL, Redis, Celery Worker, Celery Beat, Backend (FastAPI), Frontend (Streamlit)
+# Usage:
+#   Development: docker-compose up
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+x-common-env: &common-env
+  DATABASE_URL: postgresql://finrisk:${POSTGRES_PASSWORD:-finrisk_secure_123}@db:5432/finrisk
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  DEFAULT_RISK_FREE_RATE: ${DEFAULT_RISK_FREE_RATE:-0.04}
+  SECRET_KEY: ${SECRET_KEY:-finrisk-dev-secret-change-in-production}
+  DEBUG: ${DEBUG:-false}
+
+services:
+  # ── Infrastructure ───────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: finrisk-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finrisk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finrisk_secure_123}
+      POSTGRES_DB: finrisk
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/pgdata
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finrisk -d finrisk"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: finrisk-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Application Tier ──────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      target: runtime
+    container_name: finrisk-backend
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro          # Read-only market data mount
+      - finrisk_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/celery.Dockerfile
+      target: runtime
+    container_name: finrisk-celery-worker
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+    volumes:
+      - ./data:/app/data:ro
+      - finrisk_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A backend.app.workers.celery_app worker
+      --loglevel=info --concurrency=4 -Q finrisk,monte_carlo,ml,data
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/celery.Dockerfile
+      target: runtime
+    container_name: finrisk-celery-beat
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+    volumes:
+      - finrisk_logs:/app/logs
+    depends_on:
+      - celery-worker
+    command: >
+      celery -A backend.app.workers.celery_app beat
+      --loglevel=info --scheduler celery.beat.PersistentScheduler
+
+  flower:
+    image: mher/flower:2.0
+    container_name: finrisk-flower
+    restart: unless-stopped
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      FLOWER_PORT: 5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery-worker
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      target: runtime
+    container_name: finrisk-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://backend:8000/api
+    ports:
+      - "8501:8501"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  finrisk_logs:
+    driver: local
+
+networks:
+  default:
+    name: finrisk-network
+    driver: bridge

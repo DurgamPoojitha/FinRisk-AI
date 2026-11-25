@@ -1,0 +1,45 @@
+[tool.bandit]
+# Bandit SAST configuration
+# Skipped test IDs:
+#   B101: assert_used — acceptable in test files
+#   B311: random   — we use numpy.random with seeds, not stdlib random for crypto
+#   B608: hardcoded_sql_expressions — SQLAlchemy ORM is used; no raw SQL
+skips = ["B101", "B311"]
+exclude_dirs = ["backend/tests", ".venv", "node_modules"]
+severity = "medium"
+confidence = "medium"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["backend/app"]
+omit = ["backend/tests/*", "**/__pycache__/*", "*.pyc"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 70
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [".venv", "__pycache__", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N"]
+ignore = ["E501", "N806", "N803"]
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+exclude = ".venv|node_modules"
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip = [".venv", "node_modules"]
