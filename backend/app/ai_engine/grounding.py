@@ -48,6 +48,7 @@ class RiskQuestionResponse(BaseModel):
     evidence_id: str
     answer_text: str = Field(..., min_length=10)
     direct_answer: str
+    response: Optional[str] = None
     supporting_metrics: Dict[str, Any]
     retrieved_policy_references: List[Dict[str, Any]] = Field(default_factory=list)
     is_grounded: bool = True

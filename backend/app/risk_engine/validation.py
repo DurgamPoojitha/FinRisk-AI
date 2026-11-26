@@ -293,25 +293,41 @@ def run_rolling_var_backtest(
     # Average realized tail loss vs expected shortfall
     mean_tail_loss = float(np.mean(tail_losses)) if tail_losses else 0.0
 
+    series_data = [
+        {
+            "date": str(dates[i].date()) if hasattr(dates[i], "date") else str(dates[i]),
+            "return_pct": round(float(actual_returns[i]) * 100, 3),
+            "realized_return_pct": round(float(actual_returns[i]) * 100, 3),
+            "var_pct": round(float(predicted_vars[i]) * 100, 3),
+            "predicted_var_pct": round(float(predicted_vars[i]) * 100, 3),
+            "is_exception": bool(exception_indicators[i]),
+        }
+        for i in range(len(dates))
+    ]
+
     return {
         "evaluation_period_days": total_eval_days,
+        "total_eval_days": total_eval_days,
         "window_size": window_size,
         "confidence_level": confidence_level,
         "method": method,
         "total_exceptions": total_exceptions,
+        "exceptions": total_exceptions,
+        "expected_exceptions": round((1.0 - confidence_level) * total_eval_days, 1),
         "exception_rate_pct": round((total_exceptions / total_eval_days) * 100, 2),
         "expected_exception_rate_pct": round((1.0 - confidence_level) * 100, 2),
         "mean_tail_loss_pct": round(mean_tail_loss * 100, 4),
+        "basel_zone": basel["zone"],
+        "regulatory_multiplier": round(3.0 + basel.get("capital_multiplier_addon", 0.0), 2),
+        "kupiec_lr": kupiec["lr_statistic"],
+        "kupiec_p_value": kupiec["p_value"],
+        "kupiec_accept": kupiec["decision"] == "Accept",
+        "christoffersen_lr": christoffersen["lr_statistic"],
+        "christoffersen_p_value": christoffersen["p_value"],
+        "christoffersen_accept": christoffersen["decision"] == "Accept",
         "kupiec_test": kupiec,
         "christoffersen_test": christoffersen,
         "basel_framework": basel,
-        "history": [
-            {
-                "date": str(dates[i].date()) if hasattr(dates[i], "date") else str(dates[i]),
-                "realized_return_pct": round(float(actual_returns[i]) * 100, 3),
-                "predicted_var_pct": round(float(predicted_vars[i]) * 100, 3),
-                "is_exception": bool(exception_indicators[i]),
-            }
-            for i in range(len(dates))
-        ],
+        "backtest_series": series_data,
+        "history": series_data,
     }

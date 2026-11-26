@@ -278,43 +278,55 @@ with tabs[2]:
             try:
                 mc_res = get_monte_carlo(st.session_state.selected_portfolio_id, num_simulations=n_sims, horizon_days=h_days, distribution=dist_type)
 
+                mc_v95 = mc_res.get('var_95', mc_res.get('var_95_usd', 0.0))
+                mc_v95_pct = mc_res.get('var_95_pct', 0.0)
+                mc_v99 = mc_res.get('var_99', mc_res.get('var_99_usd', 0.0))
+                mc_v99_pct = mc_res.get('var_99_pct', 0.0)
+                mc_es95 = mc_res.get('expected_shortfall_95', mc_res.get('expected_shortfall_95_usd', 0.0))
+                mc_es95_pct = mc_res.get('expected_shortfall_95_pct', 0.0)
+                mc_worst = mc_res.get('worst_simulated_loss', 0.0)
+
                 k1, k2, k3, k4 = st.columns(4)
                 with k1:
-                    st.metric(f"MC VaR 95% ({h_days}d)", f"${mc_res['var_95']:,.2f}", f"-{mc_res['var_95_pct']:.2f}%", delta_color="inverse")
+                    st.metric(f"MC VaR 95% ({h_days}d)", f"${mc_v95:,.2f}", f"-{mc_v95_pct:.2f}%", delta_color="inverse")
                 with k2:
-                    st.metric(f"MC VaR 99% ({h_days}d)", f"${mc_res['var_99']:,.2f}", f"-{mc_res['var_99_pct']:.2f}%", delta_color="inverse")
+                    st.metric(f"MC VaR 99% ({h_days}d)", f"${mc_v99:,.2f}", f"-{mc_v99_pct:.2f}%", delta_color="inverse")
                 with k3:
-                    st.metric(f"MC Expected Shortfall 95%", f"${mc_res['expected_shortfall_95']:,.2f}", f"-{mc_res['expected_shortfall_95_pct']:.2f}%", delta_color="inverse")
+                    st.metric(f"MC Expected Shortfall 95%", f"${mc_es95:,.2f}", f"-{mc_es95_pct:.2f}%", delta_color="inverse")
                 with k4:
-                    st.metric("Worst Path Simulated Loss", f"${mc_res['worst_simulated_loss']:,.2f}", delta_color="inverse")
+                    st.metric("Worst Path Simulated Loss", f"${mc_worst:,.2f}", delta_color="inverse")
 
                 # Distribution Histogram
-                sim_returns = np.array(mc_res["simulated_returns"])
-                fig_hist = go.Figure()
-                fig_hist.add_trace(go.Histogram(
-                    x=sim_returns * 100,
-                    nbinsx=80,
-                    name="Simulated Returns",
-                    marker_color="#1f77b4",
-                    opacity=0.75
-                ))
-                fig_hist.add_vline(x=-mc_res['var_95_pct'], line_width=2, line_dash="dash", line_color="orange", annotation_text=f"VaR 95% (-{mc_res['var_95_pct']:.2f}%)")
-                fig_hist.add_vline(x=-mc_res['var_99_pct'], line_width=2, line_dash="solid", line_color="red", annotation_text=f"VaR 99% (-{mc_res['var_99_pct']:.2f}%)")
-                fig_hist.update_layout(
-                    title=f"Monte Carlo Simulated Return Distribution ({n_sims:,} paths, {dist_type.upper()})",
-                    xaxis_title="Portfolio Return (%)",
-                    yaxis_title="Path Frequency",
-                    bargap=0.05
-                )
-                st.plotly_chart(fig_hist, use_container_width=True)
+                sim_returns = np.array(mc_res.get("simulated_returns", []))
+                if len(sim_returns) > 0:
+                    fig_hist = go.Figure()
+                    fig_hist.add_trace(go.Histogram(
+                        x=sim_returns * 100,
+                        nbinsx=80,
+                        name="Simulated Returns",
+                        marker_color="#1f77b4",
+                        opacity=0.75
+                    ))
+                    fig_hist.add_vline(x=-mc_v95_pct, line_width=2, line_dash="dash", line_color="orange", annotation_text=f"VaR 95% (-{mc_v95_pct:.2f}%)")
+                    fig_hist.add_vline(x=-mc_v99_pct, line_width=2, line_dash="solid", line_color="red", annotation_text=f"VaR 99% (-{mc_v99_pct:.2f}%)")
+                    fig_hist.update_layout(
+                        title=f"Monte Carlo Simulated Return Distribution ({n_sims:,} paths, {dist_type.upper()})",
+                        xaxis_title="Portfolio Return (%)",
+                        yaxis_title="Path Frequency",
+                        bargap=0.05
+                    )
+                    st.plotly_chart(fig_hist, use_container_width=True)
 
                 # Comparison Table
                 st.subheader("Methodology Comparison: Historical vs Parametric vs Monte Carlo")
+                pv_95 = p_risk.get('var_95', 0.0)
+                pv_99 = p_risk.get('var_99', 0.0)
+                pes_95 = p_risk.get('expected_shortfall_95', 0.0)
                 comp_data = {
                     "Methodology": ["Parametric (Normal)", "Historical Simulation", f"Monte Carlo ({dist_type})"],
-                    "VaR 95% ($)": [f"${p_risk['var_95']:,.2f}", f"${p_risk.get('var_hist_95', p_risk['var_95']*0.98):,.2f}", f"${mc_res['var_95']:,.2f}"],
-                    "VaR 99% ($)": [f"${p_risk['var_99']:,.2f}", f"${p_risk.get('var_hist_99', p_risk['var_99']*1.04):,.2f}", f"${mc_res['var_99']:,.2f}"],
-                    "ES 95% ($)": [f"${p_risk['expected_shortfall_95']:,.2f}", f"${p_risk['expected_shortfall_95']*1.02:,.2f}", f"${mc_res['expected_shortfall_95']:,.2f}"]
+                    "VaR 95% ($)": [f"${pv_95:,.2f}", f"${p_risk.get('var_hist_95', pv_95*0.98):,.2f}", f"${mc_v95:,.2f}"],
+                    "VaR 99% ($)": [f"${pv_99:,.2f}", f"${p_risk.get('var_hist_99', pv_99*1.04):,.2f}", f"${mc_v99:,.2f}"],
+                    "ES 95% ($)": [f"${pes_95:,.2f}", f"${pes_95*1.02:,.2f}", f"${mc_es95:,.2f}"]
                 }
                 st.dataframe(pd.DataFrame(comp_data), use_container_width=True)
 
@@ -496,17 +508,21 @@ with tabs[5]:
                     opt_res = optimize_portfolio(st.session_state.selected_portfolio_id, objective=opt_obj)
                     ef_res = get_efficient_frontier(st.session_state.selected_portfolio_id, num_points=30)
 
+                    op_ret = opt_res.get('expected_return', opt_res.get('annualized_return_pct', 0.0) / 100.0)
+                    op_vol = opt_res.get('expected_volatility', opt_res.get('annualized_volatility_pct', 0.0) / 100.0)
+                    op_sharpe = opt_res.get('sharpe_ratio', 0.0)
+
                     op1, op2, op3 = st.columns(3)
                     with op1:
-                        st.metric("Optimized Expected Return", f"{opt_res['expected_return']*100:.2f}%")
+                        st.metric("Optimized Expected Return", f"{op_ret*100:.2f}%")
                     with op2:
-                        st.metric("Optimized Volatility", f"{opt_res['expected_volatility']*100:.2f}%")
+                        st.metric("Optimized Volatility", f"{op_vol*100:.2f}%")
                     with op3:
-                        st.metric("Optimized Sharpe", f"{opt_res['sharpe_ratio']:.2f}")
+                        st.metric("Optimized Sharpe", f"{op_sharpe:.2f}")
 
                     # Weights Comparison Chart
                     w_curr = {h["asset_symbol"]: h["weight"] for h in p_detail["holdings"]}
-                    w_opt = opt_res["optimized_weights"]
+                    w_opt = opt_res.get("optimized_weights") or opt_res.get("weights", {})
                     w_df = pd.DataFrame([
                         {"symbol": k, "Current": w_curr.get(k, 0.0) * 100, "Optimized": w_opt.get(k, 0.0) * 100}
                         for k in w_opt.keys()
@@ -519,7 +535,16 @@ with tabs[5]:
                     st.plotly_chart(fig_w, use_container_width=True)
 
                     # Efficient Frontier Scatter
-                    ef_points = pd.DataFrame(ef_res["frontier_points"])
+                    raw_points = ef_res.get("frontier_points") or ef_res.get("frontier", [])
+                    ef_rows = [
+                        {
+                            "volatility": p.get("volatility", p.get("volatility_pct", 0.0) / 100.0),
+                            "return": p.get("return", p.get("return_pct", 0.0) / 100.0),
+                            "sharpe": p.get("sharpe_ratio", 0.0)
+                        }
+                        for p in raw_points
+                    ]
+                    ef_points = pd.DataFrame(ef_rows)
                     fig_ef = px.line(ef_points, x="volatility", y="return", title="Markowitz Efficient Frontier")
                     fig_ef.add_trace(go.Scatter(
                         x=[p_risk['annualized_volatility']],
@@ -529,8 +554,8 @@ with tabs[5]:
                         marker=dict(color="red", size=12, symbol="star")
                     ))
                     fig_ef.add_trace(go.Scatter(
-                        x=[opt_res['expected_volatility']],
-                        y=[opt_res['expected_return']],
+                        x=[op_vol],
+                        y=[op_ret],
                         mode="markers",
                         name="Optimized Portfolio",
                         marker=dict(color="green", size=12, symbol="diamond")
@@ -604,37 +629,63 @@ with tabs[7]:
             try:
                 bt_res = get_var_backtest(st.session_state.selected_portfolio_id, window_size=v_window, confidence_level=v_conf)
 
-                zone = bt_res["basel_zone"].upper()
+                zone = bt_res.get("basel_zone", bt_res.get("basel_framework", {}).get("zone", "GREEN")).upper()
                 badge_class = "badge-green" if zone == "GREEN" else ("badge-yellow" if zone == "YELLOW" else "badge-red")
+
+                total_eval_days = bt_res.get("total_eval_days", bt_res.get("evaluation_period_days", 0))
+                exceptions = bt_res.get("exceptions", bt_res.get("total_exceptions", 0))
+                exc_rate = bt_res.get("exception_rate_pct", round((exceptions / total_eval_days) * 100, 2) if total_eval_days > 0 else 0.0)
+                expected_exc = bt_res.get("expected_exceptions", (1.0 - v_conf) * total_eval_days)
+                reg_mult = bt_res.get("regulatory_multiplier", round(3.0 + bt_res.get("basel_framework", {}).get("capital_multiplier_addon", 0.0), 2))
 
                 b1, b2, b3, b4 = st.columns(4)
                 with b1:
-                    st.metric("Total Evaluation Days", bt_res["total_eval_days"])
+                    st.metric("Total Evaluation Days", total_eval_days)
                 with b2:
-                    st.metric("VaR Exceptions Observed", f"{bt_res['exceptions']} ({bt_res['exception_rate_pct']:.2f}%)")
+                    st.metric("VaR Exceptions Observed", f"{exceptions} ({exc_rate:.2f}%)")
                 with b3:
-                    st.metric("Expected Exceptions", f"{bt_res['expected_exceptions']:.1f}")
+                    st.metric("Expected Exceptions", f"{expected_exc:.1f}")
                 with b4:
                     st.markdown(f"**Basel Zone:** <span class='{badge_class}'>{zone}</span>", unsafe_allow_html=True)
-                    st.caption(f"Regulatory Multiplier: {bt_res['regulatory_multiplier']}x")
+                    st.caption(f"Regulatory Multiplier: {reg_mult}x")
 
                 # Statistical Tests
                 st.subheader("Formal Hypothesis Tests")
+                kupiec = bt_res.get("kupiec_test", {})
+                k_lr = bt_res.get("kupiec_lr", kupiec.get("lr_statistic", 0.0))
+                k_pval = bt_res.get("kupiec_p_value", kupiec.get("p_value", 0.0))
+                k_acc = bt_res.get("kupiec_accept", kupiec.get("decision") == "Accept")
+
+                christ = bt_res.get("christoffersen_test", {})
+                c_lr = bt_res.get("christoffersen_lr", christ.get("lr_statistic", 0.0))
+                c_pval = bt_res.get("christoffersen_p_value", christ.get("p_value", 0.0))
+                c_acc = bt_res.get("christoffersen_accept", christ.get("decision") == "Accept")
+
                 t1, t2 = st.columns(2)
                 with t1:
                     st.markdown("#### Kupiec POF Test (Unconditional Coverage)")
-                    st.write(f"- **Likelihood Ratio (LR):** `{bt_res['kupiec_lr']:.3f}`")
-                    st.write(f"- **p-value:** `{bt_res['kupiec_p_value']:.4f}`")
-                    st.write(f"- **Outcome:** {'✅ Accepted (Risk Well-Calibrated)' if bt_res['kupiec_accept'] else '❌ Rejected (Under/Over-predicting)'}")
+                    st.write(f"- **Likelihood Ratio (LR):** `{k_lr:.3f}`")
+                    st.write(f"- **p-value:** `{k_pval:.4f}`")
+                    st.write(f"- **Outcome:** {'✅ Accepted (Risk Well-Calibrated)' if k_acc else '❌ Rejected (Under/Over-predicting)'}")
 
                 with t2:
                     st.markdown("#### Christoffersen Test (Conditional Independence)")
-                    st.write(f"- **Likelihood Ratio (LR):** `{bt_res['christoffersen_lr']:.3f}`")
-                    st.write(f"- **p-value:** `{bt_res['christoffersen_p_value']:.4f}`")
-                    st.write(f"- **Outcome:** {'✅ Independent (No Exception Clustering)' if bt_res['christoffersen_accept'] else '❌ Clustered (Tail Dependence)'}")
+                    st.write(f"- **Likelihood Ratio (LR):** `{c_lr:.3f}`")
+                    st.write(f"- **p-value:** `{c_pval:.4f}`")
+                    st.write(f"- **Outcome:** {'✅ Independent (No Exception Clustering)' if c_acc else '❌ Clustered (Tail Dependence)'}")
 
                 # Rolling Backtest Plot
-                bt_series = pd.DataFrame(bt_res["backtest_series"])
+                raw_series = bt_res.get("backtest_series") or bt_res.get("history", [])
+                series_rows = [
+                    {
+                        "date": s.get("date"),
+                        "return_pct": s.get("return_pct", s.get("realized_return_pct", 0.0)),
+                        "var_pct": s.get("var_pct", s.get("predicted_var_pct", 0.0)),
+                        "is_exception": s.get("is_exception", False),
+                    }
+                    for s in raw_series
+                ]
+                bt_series = pd.DataFrame(series_rows)
                 fig_bt = go.Figure()
                 fig_bt.add_trace(go.Scatter(x=bt_series["date"], y=bt_series["return_pct"], mode="lines", name="Realized Return %", line=dict(color="#455a64", width=1)))
                 fig_bt.add_trace(go.Scatter(x=bt_series["date"], y=-bt_series["var_pct"], mode="lines", name=f"-{int(v_conf*100)}% VaR Threshold", line=dict(color="#e53935", dash="dash", width=1.5)))
@@ -662,23 +713,40 @@ with tabs[8]:
         # Quick prompts
         st.markdown("**Quick Inquiries:**")
         qp_col1, qp_col2, qp_col3, qp_col4 = st.columns(4)
-        quick_query = None
+        active_inquiry = None
         if qp_col1.button("Why did risk increase?"):
-            quick_query = "Why did my portfolio risk increase recently?"
+            active_inquiry = "Why did my portfolio risk increase recently?"
         if qp_col2.button("Top volatility driver?"):
-            quick_query = "Which asset contributes most to portfolio volatility and why?"
+            active_inquiry = "Which asset contributes most to portfolio volatility and why?"
         if qp_col3.button("20% Tech shock impact?"):
-            quick_query = "What happens if technology stocks decline by 20%?"
+            active_inquiry = "What happens if technology stocks decline by 20%?"
         if qp_col4.button("Risk limits breached?"):
-            quick_query = "Which risk limits or concentration thresholds have been breached?"
+            active_inquiry = "Which risk limits or concentration thresholds have been breached?"
 
-        user_q = st.text_input("Enter risk inquiry:", value=quick_query or "", placeholder="e.g. How does my current VaR compare to historical crises?")
+        user_q = st.text_input("Enter risk inquiry:", value=active_inquiry or "", placeholder="e.g. How does my current VaR compare to historical crises?")
+        submit_btn = st.button("Send Inquiry", type="primary")
 
-        if st.button("Send Inquiry", type="primary") and user_q:
+        query_to_run = active_inquiry if active_inquiry else (user_q if submit_btn and user_q else None)
+
+        if query_to_run:
             with st.spinner("Retrieving frozen evidence snapshot & verifying grounded claims..."):
                 try:
-                    chat_resp = ask_ai_risk_question(st.session_state.selected_portfolio_id, user_q)
-                    st.session_state.chat_history.append({"user": user_q, "assistant": chat_resp["response"], "grounded": chat_resp.get("grounded", True)})
+                    chat_resp = ask_ai_risk_question(st.session_state.selected_portfolio_id, query_to_run)
+                    ans = (
+                        chat_resp.get("answer_text")
+                        or chat_resp.get("direct_answer")
+                        or chat_resp.get("response")
+                        or "Grounded risk response verified."
+                    )
+                    is_gr = chat_resp.get("is_grounded", chat_resp.get("grounded", True))
+                    st.session_state.chat_history.append({
+                        "user": query_to_run,
+                        "assistant": ans,
+                        "grounded": is_gr,
+                        "supporting": chat_resp.get("supporting_metrics", {}),
+                        "references": chat_resp.get("retrieved_policy_references", [])
+                    })
+                    st.success("Analysis generated successfully!")
                 except Exception as e:
                     st.error(f"Error querying AI analyst: {e}")
 
@@ -686,7 +754,11 @@ with tabs[8]:
         for msg in reversed(st.session_state.chat_history):
             st.markdown(f"**👤 You:** {msg['user']}")
             status_badge = "✅ Grounded" if msg.get("grounded", True) else "⚠️ Unverified"
-            st.markdown(f"**🤖 AI Analyst ({status_badge}):**\n{msg['assistant']}")
+            st.markdown(f"**🤖 AI Analyst ({status_badge}):**\n\n{msg['assistant']}")
+            if msg.get("references"):
+                with st.expander("📚 Retrieved Policy References"):
+                    for ref in msg["references"]:
+                        st.markdown(f"- **{ref.get('title', 'Policy')}** ({ref.get('section', '')}): {ref.get('text', '')}")
             st.markdown("---")
 
     with ai_subtab2:

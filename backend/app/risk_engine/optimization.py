@@ -98,6 +98,9 @@ def optimize_portfolio(
 
     return {
         "objective": objective,
+        "expected_return": round(opt_ret, 6),
+        "expected_volatility": round(opt_vol, 6),
+        "optimized_weights": {symbols[i]: round(float(optimal_w[i]), 4) for i in range(n)},
         "weights": {symbols[i]: round(float(optimal_w[i]), 4) for i in range(n)},
         "annualized_return_pct": round(opt_ret * 100, 2),
         "annualized_volatility_pct": round(opt_vol * 100, 2),
@@ -162,8 +165,18 @@ def calculate_efficient_frontier(
     # Sort by volatility
     frontier_points.sort(key=lambda x: x["volatility_pct"])
 
+    converted_points = [
+        {
+            "volatility": p["volatility_pct"] / 100.0,
+            "return": p["return_pct"] / 100.0,
+            **p
+        }
+        for p in frontier_points
+    ]
+
     return {
         "frontier": frontier_points,
+        "frontier_points": converted_points,
         "min_volatility_portfolio": min_vol_res,
         "max_sharpe_portfolio": max_sharpe_res,
         "risk_parity_portfolio": risk_parity_res,
